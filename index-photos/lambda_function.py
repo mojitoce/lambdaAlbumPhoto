@@ -13,17 +13,17 @@ def lambda_handler(event, context):
     bucket = s3_info['bucket']['name']
     name = s3_info['object']['key']
 
-    # print(HTTPBasicAuth('c', 'd'))
-    # When I have more infor implement x-amz-meta-customLabels
+    # extract es endpoint information
+    es_client = boto3.client('es')
+    es_endpoint = client.describe_elasticsearch_domain(DomainName='photos-cf')['DomainStatus']['Endpoint']
+
+    # Extract custom labels
     metadata_resp = s3_client.head_object(Bucket = bucket, Key = name)
-    print(metadata_resp)
-    print(metadata_resp.keys())
-    
     custom_label = metadata_resp['Metadata']['customlabels']
     custom_label = [x.strip().lower() for x in custom_label.split(',')]
-    print(custom_label)
 
-    #{'Labels': [{'Name': 'Hound', 'Confidence': 95.22135162353516, 'Instances': [], 'Parents': [{'Name': 'Dog'}, {'Name': 'Pet'}, {'Name': 'Canine'}]}, {'Name': 'Dog', 'Confidence': 95.22135162353516, 'Instances': [{'BoundingBox': {'Width': 0.692852795124054, 'Height': 0.6309356689453125, 'Left': 0.07569825649261475, 'Top': 0.0567517913877964}, 'Confidence': 94.92607879638672}], 'Parents': [{'Name': 'Pet'}, {'Name': 'Canine'}]}, {'Name': 'Canine', 'Confidence': 95.22135162353516, 'Instances': [], 'Parents': []}, {'Name': 'Pet', 'Confidence': 95.22135162353516, 'Instances': [], 'Parents': []}, {'Name': 'Strap', 'Confidence': 87.1478042602539, 'Instances': [], 'Parents': []}], 'LabelModelVersion': '2.0', 'ResponseMetadata': {'RequestId': 'bf8b1644-cbe7-4cc2-9533-e189859d0e24', 'HTTPStatusCode': 200, 'HTTPHeaders': {'content-type': 'application/x-amz-json-1.1', 'date': 'Mon, 22 Feb 2021 20:45:21 GMT', 'x-amzn-requestid': 'bf8b1644-cbe7-4cc2-9533-e189859d0e24', 'content-length': '647', 'connection': 'keep-alive'}, 'RetryAttempts': 0}}
+
+    # Extract rekog labels
     labels = get_rekog_labels(bucket, name)
     labels.extend(custom_label)
     labels = list(set(labels))
@@ -38,13 +38,12 @@ def lambda_handler(event, context):
         "labels": labels
     }
 
-    url = 'https://search-photo-v2-eho6yb26z6kbhyeouo3s32dexm.us-east-1.es.amazonaws.com/'
-    
-    post_request_url = url + 'photos/photo'
+
+    post_request_url = 'https://' + es_endpoint + '/photos/photo'
     r = requests.post(post_request_url, auth=HTTPBasicAuth('coms6998', 'Coms6998!'), json=es_dict)
 
     print(r)
-    
+
     return {
         'statusCode': 200,
         'body': 'Photo has been added to the index'
