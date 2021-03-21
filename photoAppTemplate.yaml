@@ -1,0 +1,342 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: Album data
+Resources:
+  searchPhotos:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      FunctionName: search-photos
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.6
+      CodeUri: ./search-photos
+      Description: "Lambda function for CD Demo"
+      MemorySize: 128
+      Timeout: 30
+      Role: "arn:aws:iam::269578278636:role/admin-lambda-role"
+      Environment:
+        Variables:
+          REGION: us-east-1
+  indexPhotos:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      FunctionName: index-photos
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.6
+      CodeUri: ./index-photos
+      Description: "Lambda function for CD Demo"
+      MemorySize: 128
+      Timeout: 30
+      Role: "arn:aws:iam::269578278636:role/admin-lambda-role"
+      Environment:
+        Variables:
+          REGION: us-east-1
+  photoBucket:
+    Type: 'AWS::S3::Bucket'
+    DependsOn: BucketPermission
+    Properties:
+      BucketName: photo-bucket-v4
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: 's3:ObjectCreated:Put'
+            Function: !GetAtt 
+              - indexPhotos
+              - Arn
+  BucketPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref indexPhotos
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub 'arn:aws:s3:::photo-bucket-v4'
+  photoBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref photoBucket
+      PolicyDocument:
+        Statement:
+          - Action:
+              - 's3:GetObject'
+            Effect: Allow
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref photoBucket
+                - /*
+            Principal: '*'
+            Sid: AllowPublicRead
+  ServerlessRestApiDeploymentb2888a1f04:
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      RestApiId: !Ref ServerlessRestApi
+      Description: RestApi deployment
+      StageName: Stage
+  ServerlessRestApi:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: Album Index and Search
+      Description: AI Photo Cloudformation
+      Parameters:
+        endpointConfigurationTypes: REGIONAL
+        ignore: documentation
+      EndpointConfiguration: 
+        Types:
+          - REGIONAL
+      Body:
+        swagger: '2.0'
+        info:
+          title: Album Index and Search
+          description: >-
+            AI Photo Search application, built during the Cloud and Big Data
+            course at Columbia University.
+          version: 1.0.0
+        schemes:
+          - https
+        basePath: /v1
+        produces:
+          - application/json
+        paths:
+          /search:
+            options:
+              summary: CORS support
+              description: |
+                Enable CORS by returning correct headers
+              responses:
+                '200':
+                  description: Default response for CORS method
+                  headers:
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: |
+                    {
+                      "statusCode" : 200
+                    }
+                responses:
+                  default:
+                    statusCode: '200'
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: >-
+                        'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+                      method.response.header.Access-Control-Allow-Methods: '''GET,OPTIONS'''
+                      method.response.header.Access-Control-Allow-Origin: '''*'''
+                    responseTemplates:
+                      application/json: ''
+            get:
+              summary: photo search method
+              description: >
+                This API takes in a search query as a query parameter and
+                returns zero or more photos that match the search query.
+              operationId: searchPhotos
+              parameters:
+                - in: query
+                  name: q
+                  schema:
+                    type: string
+                  description: the string to be searched
+              produces:
+                - application/json
+              responses:
+                '200':
+                  description: search results
+                  schema:
+                    $ref: '#/definitions/SearchResponse'
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                '403':
+                  description: Unauthorized
+                  schema:
+                    $ref: '#/definitions/Error'
+                '500':
+                  description: Unexpected error
+                  schema:
+                    $ref: '#/definitions/Error'
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                responses:
+                  default:
+                    statusCode: '200'
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: '''*'''
+                    responseTemplates:
+                      application/json: ''
+                type: aws_proxy
+                uri: !Sub >-
+                  arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${searchPhotos.Arn}/invocations
+          /upload:
+            options:
+              summary: CORS support
+              description: |
+                Enable CORS by returning correct headers
+              responses:
+                '200':
+                  description: Default response for CORS method
+                  headers:
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: |
+                    {
+                      "statusCode" : 200
+                    }
+                responses:
+                  default:
+                    statusCode: '200'
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: >-
+                        'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-amz-meta-customLabels,filename'
+                      method.response.header.Access-Control-Allow-Methods: '''OPTIONS,PUT'''
+                      method.response.header.Access-Control-Allow-Origin: '''*'''
+                    responseTemplates:
+                      application/json: ''
+            put:
+              summary: photo upload method
+              description: >
+                This API takes in the multi-part body sent to it (ex. a photo)
+                and uploads it to an S3 bucket.
+              operationId: uploadPhoto
+              consumes:
+                - image/png
+                - image/jpg
+                - image/jpeg
+              parameters:
+                - name: Content-Type
+                  in: header
+                  required: false
+                  type: string
+                - name: filename
+                  in: header
+                  required: false
+                  type: string
+                - name: x-amz-meta-customLabels
+                  in: header
+                  required: false
+                  type: string
+              produces:
+                - application/json
+              responses:
+                '200':
+                  description: S3 PUT operation response
+                  schema:
+                    type: object
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                '403':
+                  description: Unauthorized
+                  schema:
+                    $ref: '#/definitions/Error'
+                '500':
+                  description: Unexpected error
+                  schema:
+                    $ref: '#/definitions/Error'
+              x-amazon-apigateway-integration:
+                credentials: 'arn:aws:iam::269578278636:role/photo_upload'
+                responses:
+                  default:
+                    statusCode: '200'
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: '''*'''
+                    responseTemplates:
+                      application/json: ''
+                requestParameters:
+                  integration.request.header.x-amz-meta-customLabels: method.request.header.x-amz-meta-customLabels
+                  integration.request.path.filename: method.request.header.filename
+                  integration.request.header.Content-Type: method.request.header.Content-Type
+                uri: >-
+                  arn:aws:apigateway:us-east-1:s3:path/photo-bucket-v4/{filename}
+                contentHandling: CONVERT_TO_BINARY
+                passthroughBehavior: WHEN_NO_TEMPLATES
+                requestTemplates:
+                  application/json: ''
+                httpMethod: PUT
+                type: aws
+        definitions:
+          SearchResponse:
+            type: object
+            properties:
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Photo'
+          Photo:
+            type: object
+            properties:
+              url:
+                type: string
+              labels:
+                type: array
+                items:
+                  type: string
+          Error:
+            type: object
+            properties:
+              code:
+                type: integer
+                format: int32
+              message:
+                type: string
+  searchPhotosLambdaAPIPermissionProd:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      Principal: apigateway.amazonaws.com
+      FunctionName: !Ref searchPhotos
+      SourceArn: !Sub 
+        - >-
+          arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${__ApiId__}/${__Stage__}/GET/search
+        - __Stage__: '*'
+          __ApiId__: !Ref ServerlessRestApi
+  ESDomain:
+    Type: 'AWS::Elasticsearch::Domain'
+    Properties:
+      DomainName: photoindexandsearch
+      AccessPolicies:
+        'Fn::Sub': |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": "*"
+                },
+                "Action": "es:*",
+                "Resource": "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/photoindexandsearch/*"
+              }
+            ]
+          }
+      ElasticsearchVersion: 7.9
+      AdvancedSecurityOptions:
+        Enabled: true
+        InternalUserDatabaseEnabled: true
+        MasterUserOptions:
+          MasterUserName: coms6998
+          MasterUserPassword: Coms6998!
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      DomainEndpointOptions:
+        EnforceHTTPS: true
+      EncryptionAtRestOptions:
+        Enabled: true
+      EBSOptions:
+        EBSEnabled: true
+        Iops: 0
+        VolumeSize: 10
+        VolumeType: gp2
+      ElasticsearchClusterConfig:
+        InstanceCount: 1
+        InstanceType: t3.small.elasticsearch

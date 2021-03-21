@@ -14,8 +14,8 @@ def lambda_handler(event, context):
     name = s3_info['object']['key']
 
     # extract es endpoint information
-    es_client = boto3.client('es')
-    es_endpoint = client.describe_elasticsearch_domain(DomainName='photos-cf')['DomainStatus']['Endpoint']
+    es_client = boto3.client('es', region_name='us-east-1')
+    es_endpoint = es_client.describe_elasticsearch_domain(DomainName='photoindexandsearch')['DomainStatus']['Endpoint']
 
     # Extract custom labels
     metadata_resp = s3_client.head_object(Bucket = bucket, Key = name)
